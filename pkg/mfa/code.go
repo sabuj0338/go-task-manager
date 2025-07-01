@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/sabuj0338/go-task-manager/pkg/mail"
 	"github.com/sabuj0338/go-task-manager/pkg/redis"
 )
 
@@ -20,7 +21,13 @@ func SendEmailCode(email string) (string, error) {
 		return "", err
 	}
 	// TODO: integrate actual email sender here
-	fmt.Println("Sent email code to", email, ":", code)
+	// fmt.Println("Sent email code to", email, ":", code)
+
+	subject := "Verify your email"
+	body := fmt.Sprintf(`<p>Your email verification code is: <b>%s</b></p>`, code)
+
+	mail.Send(email, subject, body)
+
 	return code, nil
 }
 

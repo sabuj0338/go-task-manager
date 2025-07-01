@@ -21,6 +21,8 @@ func RegisterAuthRoutes(router fiber.Router) {
 	router.Post("/email/send", auth.SendEmailVerificationHandler)
 	router.Post("/email/verify", auth.VerifyEmailCodeHandler)
 
+	router.Post("/logout", auth.LogoutHandler)
+
 	protected := router.Group("/", middleware.JWTProtected())
 	protected.Post("/mfa/setup", auth.SetupMFAHandler)
 	protected.Post("/mfa/verify", auth.VerifyMFAHandler)
@@ -53,18 +55,18 @@ func RegisterTaskRoutes(router fiber.Router) {
 	router.Delete("/:id", task.DeleteTaskHandler)
 }
 
-func SetupRoutes(app *fiber.App) {
-	api := app.Group("/v1/api")
+// func SetupRoutes(app *fiber.App) {
+// 	api := app.Group("/v1/api")
 
-	// Auth routes
-	auth := api.Group("/auth")
-	RegisterAuthRoutes(auth)
+// 	// Auth routes
+// 	auth := api.Group("/auth")
+// 	RegisterAuthRoutes(auth)
 
-	// User routes
-	users := api.Group("/users")
-	RegisterUserRoutes(users)
+// 	// User routes
+// 	users := api.Group("/users")
+// 	RegisterUserRoutes(users)
 
-	// Task routes
-	tasks := api.Group("/tasks")
-	RegisterTaskRoutes(tasks)
-}
+// 	// Task routes
+// 	tasks := api.Group("/tasks")
+// 	RegisterTaskRoutes(tasks)
+// }

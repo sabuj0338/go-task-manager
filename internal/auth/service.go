@@ -7,6 +7,7 @@ import (
 	"github.com/sabuj0338/go-task-manager/internal/auth/repository"
 	"github.com/sabuj0338/go-task-manager/internal/models"
 	"github.com/sabuj0338/go-task-manager/internal/utils"
+	"github.com/sabuj0338/go-task-manager/pkg/lock"
 	"github.com/sabuj0338/go-task-manager/pkg/token"
 )
 
@@ -35,7 +36,12 @@ func Login(dto LoginDTO) (*models.User, string, string, error) {
 		return nil, "", "", errors.New("invalid credentials")
 	}
 
+	if lock.IsLocked(user.Email) {
+		return nil, "", "", errors.New("Account temporarily locked. Try later")
+	}
+
 	if !utils.CheckPasswordHash(dto.Password, user.Password) {
+		lock.LoginFailed(user.Email)
 		return nil, "", "", errors.New("invalid credentials")
 	}
 

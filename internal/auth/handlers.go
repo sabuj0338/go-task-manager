@@ -6,6 +6,7 @@ import (
 
 	"github.com/sabuj0338/go-task-manager/internal/auth/repository"
 	"github.com/sabuj0338/go-task-manager/pkg/database"
+	"github.com/sabuj0338/go-task-manager/pkg/lock"
 	"github.com/sabuj0338/go-task-manager/pkg/mfa"
 	"github.com/sabuj0338/go-task-manager/pkg/otp"
 	"github.com/sabuj0338/go-task-manager/pkg/token"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 var validate = validator.New()
@@ -77,37 +77,67 @@ func LoginHandler(c *fiber.Ctx) error {
 	})
 }
 
+// func RefreshTokenHandler(c *fiber.Ctx) error {
+// 	type Body struct {
+// 		RefreshToken string `json:"refresh_token" validate:"required"`
+// 	}
+// 	var body Body
+// 	if err := c.BodyParser(&body); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+// 	}
+// 	if err := validate.Struct(body); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+// 	}
+
+// 	parsedToken, err := token.VerifyRefreshToken(body.RefreshToken)
+// 	if err != nil || !parsedToken.Valid {
+// 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+// 	}
+
+// 	claims := parsedToken.Claims.(jwt.MapClaims)
+// 	if claims["type"] != "refresh" {
+// 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token type"})
+// 	}
+
+// 	userID := uint(claims["user_id"].(float64))
+// 	// userEmail := claims["email"].(string)
+// 	newAccessToken, err := token.GenerateJWT(userID, "user") // Ideally fetch role again
+// 	if err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate access token"})
+// 	}
+
+// 	return c.JSON(fiber.Map{
+// 		"access_token": newAccessToken,
+// 	})
+// }
+
 func RefreshTokenHandler(c *fiber.Ctx) error {
-	type Body struct {
-		RefreshToken string `json:"refresh_token" validate:"required"`
+	type Payload struct {
+		RefreshToken string `json:"refresh_token"`
 	}
-	var body Body
-	if err := c.BodyParser(&body); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
-	}
-	if err := validate.Struct(body); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	var p Payload
+	if err := c.BodyParser(&p); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Missing refresh token"})
 	}
 
-	parsedToken, err := token.VerifyRefreshToken(body.RefreshToken)
-	if err != nil || !parsedToken.Valid {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+	if token.IsRefreshTokenBlacklisted(p.RefreshToken) {
+		return c.Status(401).JSON(fiber.Map{"error": "Token is blacklisted"})
 	}
 
-	claims := parsedToken.Claims.(jwt.MapClaims)
-	if claims["type"] != "refresh" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token type"})
+	claims, err := token.ParseToken(p.RefreshToken)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
 
 	userID := uint(claims["user_id"].(float64))
-	// userEmail := claims["email"].(string)
-	newAccessToken, err := token.GenerateJWT(userID, "user") // Ideally fetch role again
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate access token"})
-	}
+	role := claims["role"].(string)
+
+	newAccessToken, _ := token.GenerateJWT(userID, role)
+	newRefreshToken, _ := token.GenerateRefreshToken(userID)
 
 	return c.JSON(fiber.Map{
-		"access_token": newAccessToken,
+		"access_token":  newAccessToken,
+		"refresh_token": newRefreshToken,
 	})
 }
 
@@ -183,7 +213,11 @@ func VerifyMFACodeHandler(c *fiber.Ctx) error {
 			key = "mfa:sms:" + user.Phone
 		}
 
+		// if !mfa.VerifyCode(key, dto.Code) {
+		// 	return c.Status(401).JSON(fiber.Map{"error": "Invalid MFA code"})
+		// }
 		if !mfa.VerifyCode(key, dto.Code) {
+			lock.MFAFailed(uint(userID))
 			return c.Status(401).JSON(fiber.Map{"error": "Invalid MFA code"})
 		}
 	} else {
@@ -312,6 +346,31 @@ func VerifyEmailCodeHandler(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Email verified successfully"})
+}
+
+func LogoutHandler(c *fiber.Ctx) error {
+	type Payload struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	var p Payload
+	if err := c.BodyParser(&p); err != nil || p.RefreshToken == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Missing refresh token"})
+	}
+
+	claims, err := token.ParseToken(p.RefreshToken)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid token"})
+	}
+
+	exp := time.Unix(int64(claims["exp"].(float64)), 0)
+	ttl := time.Until(exp)
+
+	err = token.BlacklistRefreshToken(p.RefreshToken, ttl)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to blacklist token"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Logged out successfully"})
 }
 
 // func LoginHandler(c *fiber.Ctx) error {
