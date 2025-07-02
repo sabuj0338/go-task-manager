@@ -13,7 +13,10 @@ var Ctx = context.Background()
 
 func ConnectRedis() {
 	Client = redis.NewClient(&redis.Options{
-		Addr: os.Getenv("REDIS_ADDR"),
+		Addr:     os.Getenv("REDIS_ADDR"),
+		Username: os.Getenv("REDIS_USER"),
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       0,
 	})
 	if err := Client.Ping(Ctx).Err(); err != nil {
 		log.Fatal("Failed to connect to Redis:", err)
