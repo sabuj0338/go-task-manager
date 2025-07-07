@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"github.com/sabuj0338/go-task-manager/pkg/response"
 )
 
 var validate = validator.New()
@@ -13,57 +14,76 @@ func CreateTaskHandler(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(uint)
 	var dto CreateTaskDTO
 	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid input"})
+		return response.Error(c, fiber.StatusBadRequest, "Invalid input", err.Error())
 	}
 	if err := validate.Struct(dto); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		return response.ValidationErrorResponse(c, err)
 	}
 	if err := Create(userID, dto); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to create task", err.Error())
 	}
-	return c.JSON(fiber.Map{"message": "Task created"})
+	return response.Success(c, fiber.StatusCreated, "Task created", nil)
 }
 
 func GetTasksHandler(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(uint)
 	tasks, err := GetAll(userID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to get tasks", err.Error())
 	}
-	return c.JSON(tasks)
+	return response.Success(c, fiber.StatusOK, "Tasks retrieved", tasks)
 }
 
 func GetTaskHandler(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(uint)
-	id, _ := strconv.Atoi(c.Params("id"))
+
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid task id")
+	}
+
 	task, err := GetByID(uint(id), userID)
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Task not found"})
+		return response.Error(c, fiber.StatusNotFound, "Task not found", err.Error())
 	}
-	return c.JSON(task)
+	return response.Success(c, fiber.StatusOK, "Task retrieved", task)
 }
 
 func UpdateTaskHandler(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(uint)
-	id, _ := strconv.Atoi(c.Params("id"))
+
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid task id")
+	}
+
 	var dto UpdateTaskDTO
 	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid input"})
+		return response.Error(c, fiber.StatusBadRequest, "Invalid input", err.Error())
 	}
+
 	if err := validate.Struct(dto); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		return response.ValidationErrorResponse(c, err)
 	}
+
 	if err := Update(uint(id), userID, dto); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to update task", err.Error())
 	}
-	return c.JSON(fiber.Map{"message": "Task updated"})
+
+	return response.Success(c, fiber.StatusOK, "Task updated", nil)
 }
 
 func DeleteTaskHandler(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(uint)
-	id, _ := strconv.Atoi(c.Params("id"))
-	if err := Delete(uint(id), userID); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid task id")
 	}
-	return c.JSON(fiber.Map{"message": "Task deleted"})
+
+	if err := Delete(uint(id), userID); err != nil {
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to delete task", err.Error())
+	}
+
+	return response.Success(c, fiber.StatusOK, "Task deleted", nil)
 }

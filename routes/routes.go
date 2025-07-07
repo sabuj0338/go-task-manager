@@ -38,6 +38,7 @@ func RegisterUserRoutes(router fiber.Router) {
 
 	// Only admin can list or delete users
 	router.Get("/", middleware.RequireRole("admin"), user.GetUsers)
+	router.Post("/", middleware.RequireRole("admin"), user.CreateUser)
 	router.Delete("/:id", middleware.RequireRole("admin"), user.DeleteUser)
 
 	// Admin or user can view/update themselves

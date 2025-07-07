@@ -37,7 +37,7 @@ func Login(dto LoginDTO) (*models.User, string, string, error) {
 	}
 
 	if lock.IsLocked(user.Email) {
-		return nil, "", "", errors.New("Account temporarily locked. Try later")
+		return nil, "", "", errors.New("account temporarily locked. Try later")
 	}
 
 	if !utils.CheckPasswordHash(dto.Password, user.Password) {
