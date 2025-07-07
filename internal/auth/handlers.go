@@ -90,7 +90,10 @@ func LoginHandler(c *fiber.Ctx) error {
 	trusted := c.Cookies("trusted_device_"+strconv.Itoa(int(user.ID))) == "1"
 
 	if enabled && !trusted {
-		return response.Success(c, fiber.StatusOK, "MFA required", fiber.Map{"mfa": "totp_required"})
+		return response.Success(c, fiber.StatusOK, "MFA required", fiber.Map{
+			"two_factor_enabled": true,
+			"verification_token": "asdasdasdasdasdasdasdd",
+		})
 	}
 
 	if !enabled && !trusted {
