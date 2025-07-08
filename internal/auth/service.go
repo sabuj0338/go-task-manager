@@ -7,6 +7,7 @@ import (
 	"github.com/sabuj0338/go-task-manager/internal/auth/repository"
 	"github.com/sabuj0338/go-task-manager/internal/models"
 	"github.com/sabuj0338/go-task-manager/internal/utils"
+	"github.com/sabuj0338/go-task-manager/pkg/database"
 	"github.com/sabuj0338/go-task-manager/pkg/lock"
 	"github.com/sabuj0338/go-task-manager/pkg/token"
 )
@@ -26,18 +27,12 @@ func Register(dto RegisterDTO) error {
 	hashed, _ := utils.HashPassword(dto.Password)
 
 	user := &models.User{
-		// Name:     dto.Name,
-		// Email:    dto.Email,
-		// Password: hashed,
-		// Role:     "user",
-		// Verified: false,
 		Name:          dto.Name,
 		Email:         dto.Email,
 		Password:      hashed,
 		EmailVerified: false,
 	}
 
-	// return repository.CreateUser(user)
 	if err := repository.CreateUser(user); err != nil {
 		return err
 	}
@@ -94,20 +89,37 @@ func VerifyTOTPToken(secret string, token string) bool {
 	return totp.Validate(token, secret)
 }
 
-// func Login(dto LoginDTO) (string, error) {
-// 	user, err := repository.GetUserByEmail(dto.Email)
-// 	if err != nil || user == nil {
-// 		return "", errors.New("invalid credentials")
-// 	}
+func UpdateProfile(userID uint, dto UpdateProfileDTO) (*models.User, error) {
+	emailExists := repository.CheckEmailExists(userID, dto.Email)
+	if emailExists {
+		return nil, errors.New("email already exists")
+	}
 
-// 	if !utils.CheckPasswordHash(dto.Password, user.Password) {
-// 		return "", errors.New("invalid credentials")
-// 	}
+	user, err := repository.GetUserByID(int(userID))
+	if err != nil {
+		return nil, err
+	}
 
-// 	jwt, err := token.GenerateJWT(user.ID, user.Role)
-// 	if err != nil {
-// 		return "", err
-// 	}
+	if dto.Name != "" {
+		user.Name = dto.Name
+	}
+	if dto.Phone != "" {
+		user.Phone = dto.Phone
+	}
+	if dto.Email != "" {
+		user.Email = dto.Email
+	}
+	if dto.CurrentPassword != "" && dto.NewPassword != "" {
+		if !utils.CheckPasswordHash(dto.CurrentPassword, user.Password) {
+			return nil, errors.New("invalid current password")
+		}
+		hashed, _ := utils.HashPassword(dto.NewPassword)
+		user.Password = hashed
+	}
 
-// 	return jwt, nil
-// }
+	if err := database.DB.Save(&user).Error; err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}

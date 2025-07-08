@@ -50,3 +50,11 @@ type EmailVerifyDTO struct {
 	Email string `json:"email" validate:"required,email"`
 	Code  string `json:"code" validate:"required,len=6"`
 }
+
+type UpdateProfileDTO struct {
+	Name            string `json:"name" validate:"omitempty,min=3"`
+	Phone           string `json:"phone" validate:"omitempty,min=1"`
+	Email           string `json:"email" validate:"omitempty,email"`
+	CurrentPassword string `json:"current_password" validate:"omitempty"`
+	NewPassword     string `json:"new_password" validate:"omitempty,strong_password"`
+}

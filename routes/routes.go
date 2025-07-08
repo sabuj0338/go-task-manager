@@ -33,6 +33,9 @@ func RegisterAuthRoutes(router fiber.Router) {
 	protected.Post("/mfa/setup", auth.SetupMFAHandler)
 	protected.Post("/mfa/verify", auth.VerifyMFAHandler)
 	protected.Post("/mfa/disable", auth.DisableMFAHandler)
+
+	protected.Get("/whoami", auth.WhoAmIHandler)
+	protected.Put("/update", auth.UpdateProfileHandler)
 }
 
 func RegisterUserRoutes(router fiber.Router) {

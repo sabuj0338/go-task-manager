@@ -36,6 +36,12 @@ func GetUserByID(id int) (*models.User, error) {
 	return &user, nil
 }
 
+func CheckEmailExists(userID uint, email string) bool {
+	var count int64
+	database.DB.Model(&models.User{}).Where("email = ? AND id != ?", email, userID).Count(&count)
+	return count > 0
+}
+
 func CreateUser(user *models.User) error {
 	// GORM handles the insert and populates the user's ID.
 	return database.DB.Create(user).Error
