@@ -15,8 +15,13 @@ func RegisterAuthRoutes(router fiber.Router) {
 	router.Post("/refresh-token", auth.RefreshTokenHandler)
 	router.Post("/mfa/verify-code", auth.VerifyMFACodeHandler)
 
+	// OTP-based password reset (for mobile)
 	router.Post("/forgot-password", auth.ForgotPasswordHandler)
 	router.Post("/reset-password", auth.ResetPasswordHandler)
+
+	// Link-based password reset (for web)
+	router.Post("/forgot-password-link", auth.ForgotPasswordLinkHandler)
+	router.Post("/reset-password-link", auth.ResetPasswordWithTokenHandler)
 
 	router.Post("/email/send", auth.SendEmailVerificationHandler)
 	router.Post("/email/verify", auth.VerifyEmailCodeHandler)
@@ -26,6 +31,7 @@ func RegisterAuthRoutes(router fiber.Router) {
 	protected := router.Group("/", middleware.JWTProtected())
 	protected.Post("/mfa/setup", auth.SetupMFAHandler)
 	protected.Post("/mfa/verify", auth.VerifyMFAHandler)
+	protected.Post("/mfa/disable", auth.DisableMFAHandler)
 }
 
 func RegisterUserRoutes(router fiber.Router) {

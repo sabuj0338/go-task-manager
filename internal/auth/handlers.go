@@ -1,13 +1,17 @@
 package auth
 
 import (
+	"fmt"
+	"os"
 	"strconv"
 	"time"
 	"unicode"
 
 	"github.com/sabuj0338/go-task-manager/internal/auth/repository"
+	"github.com/sabuj0338/go-task-manager/internal/utils"
 	"github.com/sabuj0338/go-task-manager/pkg/database"
 	"github.com/sabuj0338/go-task-manager/pkg/lock"
+	"github.com/sabuj0338/go-task-manager/pkg/mail"
 	"github.com/sabuj0338/go-task-manager/pkg/mfa"
 	"github.com/sabuj0338/go-task-manager/pkg/otp"
 	"github.com/sabuj0338/go-task-manager/pkg/response"
@@ -89,20 +93,30 @@ func LoginHandler(c *fiber.Ctx) error {
 	// Optional: if trusted, skip MFA
 	trusted := c.Cookies("trusted_device_"+strconv.Itoa(int(user.ID))) == "1"
 
-	if enabled && !trusted {
-		return response.Success(c, fiber.StatusOK, "MFA required", fiber.Map{
-			"two_factor_enabled": true,
-			"verification_token": "asdasdasdasdasdasdasdd",
-		})
-	}
-
-	if !enabled && !trusted {
-		// fallback to email code
-		_, err := mfa.SendEmailCode(user.Email)
+	if !trusted {
+		// MFA is required because the device is not trusted.
+		verificationToken, err := token.GenerateMFAVerificationToken(user.ID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to send MFA code")
+			return response.Error(c, fiber.StatusInternalServerError, "Could not generate verification token")
 		}
-		return response.Success(c, fiber.StatusOK, "MFA required", fiber.Map{"mfa": "email_code_required", "user_id": user.ID})
+
+		if enabled {
+			// User has TOTP configured, this is the preferred method.
+			return response.Success(c, fiber.StatusOK, "MFA required", fiber.Map{
+				"mfa":                "totp",
+				"verification_token": verificationToken,
+			})
+		} else {
+			// User does not have TOTP, fallback to email verification.
+			_, err := mfa.SendEmailCode(user.Email)
+			if err != nil {
+				return response.Error(c, fiber.StatusInternalServerError, "Failed to send MFA code")
+			}
+			return response.Success(c, fiber.StatusOK, "MFA required", fiber.Map{
+				"mfa":                "email",
+				"verification_token": verificationToken,
+			})
+		}
 	}
 
 	return response.Success(c, fiber.StatusOK, "Logged in successfully", fiber.Map{
@@ -126,12 +140,12 @@ func LoginHandler(c *fiber.Ctx) error {
 
 // 	parsedToken, err := token.VerifyRefreshToken(body.RefreshToken)
 // 	if err != nil || !parsedToken.Valid {
-// 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Invalid refresh token"})
 // 	}
 
 // 	claims := parsedToken.Claims.(jwt.MapClaims)
 // 	if claims["type"] != "refresh" {
-// 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token type"})
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Invalid token type"})
 // 	}
 
 // 	userID := uint(claims["user_id"].(float64))
@@ -155,7 +169,7 @@ func RefreshTokenHandler(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Missing refresh token")
 	}
 
-	if token.IsRefreshTokenBlacklisted(p.RefreshToken) {
+	if token.IsTokenBlacklisted(p.RefreshToken) {
 		return response.Error(c, fiber.StatusForbidden, "Token is blacklisted")
 	}
 
@@ -164,10 +178,18 @@ func RefreshTokenHandler(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusForbidden, "Invalid refresh token")
 	}
 
-	userID := uint(claims["user_id"].(float64))
-	role := claims["role"].(string)
+	if claims["type"] != "refresh" {
+		return response.Error(c, fiber.StatusForbidden, "Invalid token type")
+	}
 
-	newAccessToken, _ := token.GenerateJWT(userID, role)
+	userID := uint(claims["user_id"].(float64))
+	// The role is not in the refresh token. Fetch the user to get the current role.
+	user, err := repository.GetUserByID(int(userID))
+	if err != nil {
+		return response.Error(c, fiber.StatusNotFound, "User not found")
+	}
+
+	newAccessToken, _ := token.GenerateJWT(userID, user.Role)
 	newRefreshToken, _ := token.GenerateRefreshToken(userID)
 
 	return response.Success(c, fiber.StatusOK, "Token refreshed successfully", fiber.Map{
@@ -217,10 +239,38 @@ func VerifyMFAHandler(c *fiber.Ctx) error {
 	}
 
 	if !VerifyTOTPToken(secret, dto.Token) {
-		return response.Error(c, fiber.StatusUnauthorized, "Invalid token")
+		return response.Error(c, fiber.StatusForbidden, "Invalid token")
 	}
 
 	return response.Success(c, fiber.StatusOK, "MFA verified", nil)
+}
+
+func DisableMFAHandler(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(uint)
+
+	var dto DisableMFADTO
+	if err := c.BodyParser(&dto); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid input")
+	}
+	if err := validate.Struct(&dto); err != nil {
+		return response.ValidationErrorResponse(c, err)
+	}
+
+	user, err := repository.GetUserByID(int(userID))
+	if err != nil {
+		return response.Error(c, fiber.StatusNotFound, "User not found")
+	}
+
+	// Verify password before allowing MFA disable
+	if !utils.CheckPasswordHash(dto.Password, user.Password) {
+		return response.Error(c, fiber.StatusForbidden, "Invalid password")
+	}
+
+	if err := repository.DisableUserMFA(userID); err != nil {
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to disable MFA")
+	}
+
+	return response.Success(c, fiber.StatusOK, "MFA disabled successfully", nil)
 }
 
 func VerifyMFACodeHandler(c *fiber.Ctx) error {
@@ -232,41 +282,59 @@ func VerifyMFACodeHandler(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	userIDStr := c.Query("user_id")
-	userID, err := strconv.Atoi(userIDStr)
+	// 1. Validate the verification token from the request body
+	claims, err := token.ParseToken(dto.VerificationToken)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Missing user_id")
+		return response.Error(c, fiber.StatusForbidden, "Invalid or expired verification token")
 	}
 
-	user, _ := repository.GetUserByID(userID)
+	// 2. Check token type to ensure it's for MFA
+	if claims["type"] != "mfa_verification" {
+		return response.Error(c, fiber.StatusForbidden, "Invalid token type for MFA verification")
+	}
+
+	// 3. Extract user ID securely from the token
+	userIDFloat, ok := claims["user_id"].(float64)
+	if !ok {
+		return response.Error(c, fiber.StatusForbidden, "Invalid user ID in token")
+	}
+	userID := int(userIDFloat)
+
+	user, _ := repository.GetUserByID(userID) // user is now fetched securely
+	if user == nil {
+		return response.Error(c, fiber.StatusNotFound, "User not found")
+	}
 
 	if dto.Method != "totp" {
 		var key string
-		if dto.Method == "email" {
+		switch dto.Method {
+		case "email":
 			key = "mfa:email:" + user.Email
-		} else {
+		case "sms":
+			if user.Phone == "" {
+				return response.Error(c, fiber.StatusBadRequest, "SMS MFA not configured for this user")
+			}
 			key = "mfa:sms:" + user.Phone
 		}
 
-		// if !mfa.VerifyCode(key, dto.Code) {
-		// 	return c.Status(401).JSON(fiber.Map{"error": "Invalid MFA code"})
-		// }
 		if !mfa.VerifyCode(key, dto.Code) {
 			lock.MFAFailed(uint(userID))
 			return response.Error(c, fiber.StatusForbidden, "Invalid MFA code")
 		}
 	} else {
+		// This block handles "totp"
 		secret, enabled, err := repository.GetUserMFA(uint(userID))
 		if err != nil || !enabled {
 			return response.Error(c, fiber.StatusBadRequest, "MFA not enabled")
 		}
 		if !VerifyTOTPToken(secret, dto.Code) {
-			return response.Error(c, fiber.StatusUnauthorized, "Invalid token")
+			lock.MFAFailed(uint(userID))
+			return response.Error(c, fiber.StatusForbidden, "Invalid token")
 		}
 	}
 
 	// MFA passed → generate token
-	accessToken, _ := token.GenerateJWT(uint(userID), "user")
+	accessToken, _ := token.GenerateJWT(uint(userID), user.Role)
 	refreshToken, _ := token.GenerateRefreshToken(uint(userID))
 
 	// Optional: trust device (set cookie)
@@ -315,8 +383,8 @@ func ResetPasswordHandler(c *fiber.Ctx) error {
 	if err := c.BodyParser(&dto); err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid input")
 	}
-	if err := validate.Struct(dto); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	if err := validate.Struct(&dto); err != nil {
+		return response.ValidationErrorResponse(c, err)
 	}
 
 	ok := otp.VerifyResetCode(dto.Email, dto.Code)
@@ -333,6 +401,86 @@ func ResetPasswordHandler(c *fiber.Ctx) error {
 	_, err = database.DB.Exec(query, string(hashed), dto.Email)
 	if err != nil {
 		return response.Error(c, fiber.StatusInternalServerError, "Failed to reset password")
+	}
+
+	return response.Success(c, fiber.StatusOK, "Password reset successful", nil)
+}
+
+func ForgotPasswordLinkHandler(c *fiber.Ctx) error {
+	var dto ForgotPasswordDTO
+	if err := c.BodyParser(&dto); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid input")
+	}
+	if err := validate.Struct(&dto); err != nil {
+		return response.ValidationErrorResponse(c, err)
+	}
+
+	user, err := repository.GetUserByEmail(dto.Email)
+	if err != nil || user == nil {
+		// To prevent email enumeration attacks, always return a successful-looking response.
+		return response.Success(c, fiber.StatusOK, "If an account with that email exists, a password reset link has been sent.", nil)
+	}
+
+	resetToken, err := token.GeneratePasswordResetToken(user.ID)
+	if err != nil {
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to generate reset token")
+	}
+
+	// You should configure this in your environment variables
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000" // Default for development
+	}
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", frontendURL, resetToken)
+
+	subject := "Reset Your Password"
+	body := fmt.Sprintf(`<p>Click the link below to reset your password:</p><p><a href="%s">Reset Password</a></p><p>This link is valid for 15 minutes.</p>`, resetLink)
+	mail.Send(dto.Email, subject, body)
+
+	return response.Success(c, fiber.StatusOK, "If an account with that email exists, a password reset link has been sent.", nil)
+}
+
+func ResetPasswordWithTokenHandler(c *fiber.Ctx) error {
+	var dto ResetPasswordWithTokenDTO
+	if err := c.BodyParser(&dto); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid input")
+	}
+	if err := validate.Struct(&dto); err != nil {
+		return response.ValidationErrorResponse(c, err)
+	}
+
+	claims, err := token.ParseToken(dto.Token)
+	if err != nil {
+		return response.Error(c, fiber.StatusForbidden, "Invalid or expired token")
+	}
+
+	if claims["type"] != "password_reset" {
+		return response.Error(c, fiber.StatusForbidden, "Invalid token type")
+	}
+
+	if token.IsTokenBlacklisted(dto.Token) {
+		return response.Error(c, fiber.StatusForbidden, "Token has already been used")
+	}
+
+	userIDFloat, ok := claims["user_id"].(float64)
+	if !ok {
+		return response.Error(c, fiber.StatusForbidden, "Invalid user ID in token")
+	}
+	userID := uint(userIDFloat)
+
+	hashed, err := utils.HashPassword(dto.NewPassword)
+	if err != nil {
+		return response.Error(c, fiber.StatusInternalServerError, "Password hashing failed")
+	}
+
+	if err := repository.UpdateUserPassword(userID, hashed); err != nil {
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to reset password")
+	}
+
+	// Blacklist the token so it can't be used again
+	exp := time.Unix(int64(claims["exp"].(float64)), 0)
+	if ttl := time.Until(exp); ttl > 0 {
+		token.BlacklistToken(dto.Token, ttl)
 	}
 
 	return response.Success(c, fiber.StatusOK, "Password reset successful", nil)
@@ -394,13 +542,13 @@ func LogoutHandler(c *fiber.Ctx) error {
 
 	claims, err := token.ParseToken(p.RefreshToken)
 	if err != nil {
-		return response.Error(c, fiber.StatusUnauthorized, "Invalid token")
+		return response.Error(c, fiber.StatusForbidden, "Invalid token")
 	}
 
 	exp := time.Unix(int64(claims["exp"].(float64)), 0)
 	ttl := time.Until(exp)
 
-	err = token.BlacklistRefreshToken(p.RefreshToken, ttl)
+	err = token.BlacklistToken(p.RefreshToken, ttl)
 	if err != nil {
 		return response.Error(c, fiber.StatusInternalServerError, "Failed to blacklist token")
 	}
@@ -420,7 +568,7 @@ func LogoutHandler(c *fiber.Ctx) error {
 
 // 	token, err := Login(dto)
 // 	if err != nil {
-// 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
 // 	}
 
 // 	return c.JSON(fiber.Map{"token": token})

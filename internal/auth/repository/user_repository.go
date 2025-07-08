@@ -57,3 +57,16 @@ func GetUserMFA(userID uint) (string, bool, error) {
 	err := database.DB.QueryRow(query, userID).Scan(&secret, &enabled)
 	return secret, enabled, err
 }
+
+// DisableUserMFA clears the MFA secret and disables the MFA flag for a user.
+func DisableUserMFA(userID uint) error {
+	query := `UPDATE users SET mfa_secret = '', mfa_enabled = false, updated_at = NOW() WHERE id = ?`
+	_, err := database.DB.Exec(query, userID)
+	return err
+}
+
+func UpdateUserPassword(userID uint, newPasswordHash string) error {
+	query := `UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?`
+	_, err := database.DB.Exec(query, newPasswordHash, userID)
+	return err
+}

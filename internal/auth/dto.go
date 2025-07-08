@@ -21,9 +21,14 @@ type EnableMFAResponse struct {
 }
 
 type MFACodeVerifyDTO struct {
-	Method string `json:"method" validate:"required,oneof=email sms totp"`
-	Code   string `json:"code" validate:"required,len=6"`
-	Trust  bool   `json:"trust"`
+	VerificationToken string `json:"verification_token" validate:"required"`
+	Method            string `json:"method" validate:"required,oneof=email sms totp"`
+	Code              string `json:"code" validate:"required,len=6"`
+	Trust             bool   `json:"trust"`
+}
+
+type DisableMFADTO struct {
+	Password string `json:"password" validate:"required"`
 }
 
 type ForgotPasswordDTO struct {
@@ -33,7 +38,12 @@ type ForgotPasswordDTO struct {
 type ResetPasswordDTO struct {
 	Email       string `json:"email" validate:"required,email"`
 	Code        string `json:"code" validate:"required,len=6"`
-	NewPassword string `json:"new_password" validate:"required,min=6"`
+	NewPassword string `json:"new_password" validate:"required,strong_password"`
+}
+
+type ResetPasswordWithTokenDTO struct {
+	Token       string `json:"token" validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,strong_password"`
 }
 
 type EmailVerifyDTO struct {
