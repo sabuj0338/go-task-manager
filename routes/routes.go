@@ -3,6 +3,7 @@ package routes
 import (
 	"github.com/sabuj0338/go-task-manager/internal/auth"
 	"github.com/sabuj0338/go-task-manager/internal/middleware"
+	"github.com/sabuj0338/go-task-manager/internal/rbac"
 	"github.com/sabuj0338/go-task-manager/internal/task"
 	"github.com/sabuj0338/go-task-manager/internal/user"
 
@@ -37,43 +38,39 @@ func RegisterAuthRoutes(router fiber.Router) {
 func RegisterUserRoutes(router fiber.Router) {
 	router.Use(middleware.JWTProtected())
 
-	// router.Get("/", user.GetUsers)
-	// router.Get("/:id", user.GetUser)
-	// router.Put("/:id", user.UpdateUser)
-	// router.Delete("/:id", user.DeleteUser)
+	// Routes requiring specific permissions for user management
+	router.Get("/", middleware.RequirePermission("users:read"), user.GetUsers)
+	router.Post("/", middleware.RequirePermission("users:create"), user.CreateUser)
+	router.Delete("/:id", middleware.RequirePermission("users:delete"), user.DeleteUser)
 
-	// Only admin can list or delete users
-	router.Get("/", middleware.RequireRole("admin"), user.GetUsers)
-	router.Post("/", middleware.RequireRole("admin"), user.CreateUser)
-	router.Delete("/:id", middleware.RequireRole("admin"), user.DeleteUser)
-
-	// Admin or user can view/update themselves
+	// A user can view/update their own profile.
+	// An admin with 'users:read' or 'users:update' can also access these.
+	// The logic for this check should ideally be inside the handlers, where you
+	// can compare the authenticated user's ID with the ID from the URL parameter.
 	router.Get("/:id", user.GetUser)
 	router.Put("/:id", user.UpdateUser)
 }
 
 func RegisterTaskRoutes(router fiber.Router) {
+	// All task routes require authentication first.
+	// Then, each route is protected by a specific permission.
 	router.Use(middleware.JWTProtected())
 
-	router.Post("/", task.CreateTaskHandler)
-	router.Get("/", task.GetTasksHandler)
-	router.Get("/:id", task.GetTaskHandler)
-	router.Put("/:id", task.UpdateTaskHandler)
-	router.Delete("/:id", task.DeleteTaskHandler)
+	router.Post("/", middleware.RequirePermission("tasks:create"), task.CreateTaskHandler)
+	router.Get("/", middleware.RequirePermission("tasks:read"), task.GetTasksHandler)
+	router.Get("/:id", middleware.RequirePermission("tasks:read"), task.GetTaskHandler)
+	router.Put("/:id", middleware.RequirePermission("tasks:update"), task.UpdateTaskHandler)
+	router.Delete("/:id", middleware.RequirePermission("tasks:delete"), task.DeleteTaskHandler)
 }
 
-// func SetupRoutes(app *fiber.App) {
-// 	api := app.Group("/v1/api")
+func RegisterRBACRoutes(router fiber.Router) {
+	// All RBAC routes are protected and require specific high-level permissions.
+	// For simplicity, we can reuse 'users:update' as a proxy for these admin actions.
+	// In a larger system, you might create specific permissions like 'roles:create', 'permissions:assign', etc.
+	router.Use(middleware.JWTProtected(), middleware.RequirePermission("users:update"))
 
-// 	// Auth routes
-// 	auth := api.Group("/auth")
-// 	RegisterAuthRoutes(auth)
-
-// 	// User routes
-// 	users := api.Group("/users")
-// 	RegisterUserRoutes(users)
-
-// 	// Task routes
-// 	tasks := api.Group("/tasks")
-// 	RegisterTaskRoutes(tasks)
-// }
+	router.Post("/roles", rbac.CreateRoleHandler)
+	router.Post("/permissions", rbac.CreatePermissionHandler)
+	router.Post("/roles/assign-permission", rbac.AssignPermissionToRoleHandler)
+	router.Post("/users/assign-role", rbac.AssignRoleToUserHandler)
+}

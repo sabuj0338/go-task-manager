@@ -70,6 +70,7 @@ func handler() http.HandlerFunc {
 	routes.RegisterAuthRoutes(api.Group("/auth"))
 	routes.RegisterUserRoutes(api.Group("/users"))
 	routes.RegisterTaskRoutes(api.Group("/tasks"))
+	routes.RegisterRBACRoutes(api.Group("/rbac"))
 
 	// Static files (optional)
 	// app.Static("/public", "./public")

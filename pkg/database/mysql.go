@@ -1,15 +1,15 @@
 package database
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
 
-	_ "github.com/go-sql-driver/mysql"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
 func ConnectMySQL() {
 	var err error
@@ -20,12 +20,13 @@ func ConnectMySQL() {
 		os.Getenv("DB_PORT"),
 		os.Getenv("DB_NAME"),
 	)
-	DB, err = sql.Open("mysql", dsn)
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to MySQL:", err)
 	}
 
-	if err = DB.Ping(); err != nil {
+	sqlDB, err := DB.DB()
+	if err != nil || sqlDB.Ping() != nil {
 		log.Fatal("MySQL not responding:", err)
 	}
 	log.Println("Connected to MySQL")

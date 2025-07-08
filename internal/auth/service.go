@@ -17,17 +17,32 @@ func Register(dto RegisterDTO) error {
 		return errors.New("user already exists")
 	}
 
+	// Find the default "user" role
+	userRole, err := repository.GetRoleByName("user")
+	if err != nil {
+		return errors.New("default user role not found")
+	}
+
 	hashed, _ := utils.HashPassword(dto.Password)
 
 	user := &models.User{
-		Name:     dto.Name,
-		Email:    dto.Email,
-		Password: hashed,
-		Role:     "user",
-		Verified: false,
+		// Name:     dto.Name,
+		// Email:    dto.Email,
+		// Password: hashed,
+		// Role:     "user",
+		// Verified: false,
+		Name:          dto.Name,
+		Email:         dto.Email,
+		Password:      hashed,
+		EmailVerified: false,
 	}
 
-	return repository.CreateUser(user)
+	// return repository.CreateUser(user)
+	if err := repository.CreateUser(user); err != nil {
+		return err
+	}
+
+	return repository.AssignRoleToUser(user.ID, userRole.ID)
 }
 
 func Login(dto LoginDTO) (*models.User, string, string, error) {
@@ -45,7 +60,9 @@ func Login(dto LoginDTO) (*models.User, string, string, error) {
 		return nil, "", "", errors.New("invalid credentials")
 	}
 
-	accessToken, err := token.GenerateJWT(user.ID, user.Role)
+	// accessToken, err := token.GenerateJWT(user.ID, user.Role)
+	accessToken, err := token.GenerateJWT(user.ID)
+
 	if err != nil {
 		return nil, "", "", err
 	}

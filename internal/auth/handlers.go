@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/sabuj0338/go-task-manager/internal/auth/repository"
+	"github.com/sabuj0338/go-task-manager/internal/models"
 	"github.com/sabuj0338/go-task-manager/internal/utils"
 	"github.com/sabuj0338/go-task-manager/pkg/database"
 	"github.com/sabuj0338/go-task-manager/pkg/lock"
@@ -119,6 +120,9 @@ func LoginHandler(c *fiber.Ctx) error {
 		}
 	}
 
+	// clear permissions cache from redis for this user
+	repository.ClearUserPermissionCache(user.ID)
+
 	return response.Success(c, fiber.StatusOK, "Logged in successfully", fiber.Map{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
@@ -184,12 +188,12 @@ func RefreshTokenHandler(c *fiber.Ctx) error {
 
 	userID := uint(claims["user_id"].(float64))
 	// The role is not in the refresh token. Fetch the user to get the current role.
-	user, err := repository.GetUserByID(int(userID))
-	if err != nil {
-		return response.Error(c, fiber.StatusNotFound, "User not found")
-	}
+	// user, err := repository.GetUserByID(int(userID))
+	// if err != nil {
+	// 	return response.Error(c, fiber.StatusNotFound, "User not found")
+	// }
 
-	newAccessToken, _ := token.GenerateJWT(userID, user.Role)
+	newAccessToken, _ := token.GenerateJWT(userID)
 	newRefreshToken, _ := token.GenerateRefreshToken(userID)
 
 	return response.Success(c, fiber.StatusOK, "Token refreshed successfully", fiber.Map{
@@ -333,8 +337,11 @@ func VerifyMFACodeHandler(c *fiber.Ctx) error {
 		}
 	}
 
+	// clear permissions cache from redis for this user
+	repository.ClearUserPermissionCache(uint(userID))
+
 	// MFA passed → generate token
-	accessToken, _ := token.GenerateJWT(uint(userID), user.Role)
+	accessToken, _ := token.GenerateJWT(uint(userID))
 	refreshToken, _ := token.GenerateRefreshToken(uint(userID))
 
 	// Optional: trust device (set cookie)
@@ -397,8 +404,7 @@ func ResetPasswordHandler(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusInternalServerError, "Password hashing failed")
 	}
 
-	query := `UPDATE users SET password = ?, updated_at = NOW() WHERE email = ?`
-	_, err = database.DB.Exec(query, string(hashed), dto.Email)
+	err = database.DB.Model(&models.User{}).Where("email = ?", dto.Email).Update("password", string(hashed)).Error
 	if err != nil {
 		return response.Error(c, fiber.StatusInternalServerError, "Failed to reset password")
 	}
@@ -522,8 +528,7 @@ func VerifyEmailCodeHandler(c *fiber.Ctx) error {
 	}
 
 	// mark verified
-	query := `UPDATE users SET email_verified = true, updated_at = NOW() WHERE email = ?`
-	_, err := database.DB.Exec(query, dto.Email)
+	err := database.DB.Model(&models.User{}).Where("email = ?", dto.Email).Update("email_verified", true).Error
 	if err != nil {
 		return response.Error(c, fiber.StatusInternalServerError, "Failed to update verification status")
 	}

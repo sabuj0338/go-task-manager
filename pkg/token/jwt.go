@@ -18,12 +18,12 @@ import (
 // 	return t.SignedString([]byte(os.Getenv("JWT_SECRET")))
 // }
 
-func GenerateJWT(userID uint, role string) (string, error) {
+func GenerateJWT(userID uint) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
-		"role":    role,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(), // Standard 24-hour access token
-		"type":    "access",
+		// "role":    role,
+		"exp":  time.Now().Add(time.Hour * 24).Unix(), // Standard 24-hour access token
+		"type": "access",
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return t.SignedString([]byte(os.Getenv("JWT_SECRET")))

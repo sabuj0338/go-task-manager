@@ -1,72 +1,45 @@
 package repository
 
 import (
-	"database/sql"
-	"errors"
-
 	"github.com/sabuj0338/go-task-manager/internal/models"
 	"github.com/sabuj0338/go-task-manager/pkg/database"
 )
 
 func FindAll() ([]models.User, error) {
-	rows, err := database.DB.Query("SELECT id, name, email, role, verified, created_at, updated_at FROM users")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	var users []models.User
-	for rows.Next() {
-		var user models.User
-		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.CreatedAt, &user.UpdatedAt); err != nil {
-			return nil, err
-		}
-		users = append(users, user)
-	}
-	return users, nil
+	// Use GORM to find all users and preload their roles
+	err := database.DB.Preload("Roles").Find(&users).Error
+	return users, err
 }
 
 func FindById(id int) (*models.User, error) {
-	row := database.DB.QueryRow("SELECT id, name, email, role, verified, created_at, updated_at FROM users WHERE id = ?", id)
 	var user models.User
-	err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+	// Use GORM to find a user by ID and preload their roles
+	if err := database.DB.Preload("Roles").First(&user, id).Error; err != nil {
+		return nil, err // GORM handles ErrRecordNotFound
 	}
 	return &user, nil
 }
 
 func GetUserByEmail(email string) (*models.User, error) {
-	query := `SELECT id, name, email, password, role, verified, created_at, updated_at FROM users WHERE email = ?`
-	row := database.DB.QueryRow(query, email)
-
 	var user models.User
-	err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Password, &user.Role, &user.Verified, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
+	if err := database.DB.Where("email = ?", email).Preload("Roles").First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil
 }
 
 func CreateUser(user *models.User) error {
-	query := `INSERT INTO users (name, email, password, role, verified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())`
-	_, err := database.DB.Exec(query, user.Name, user.Email, user.Password, user.Role, user.Verified)
-	return err
+	// GORM handles the insert and populates the user's ID.
+	return database.DB.Create(user).Error
 }
 
 func UpdateById(id int, name string, email string) error {
-	query := "UPDATE users SET name = ?, email = ?, updated_at = NOW() WHERE id = ?"
-	_, err := database.DB.Exec(query, name, email, id)
-	return err
+	// Use GORM's Updates method
+	return database.DB.Model(&models.User{}).Where("id = ?", id).Updates(models.User{Name: name, Email: email}).Error
 }
 
 func RemoveById(id int) error {
-	_, err := database.DB.Exec("DELETE FROM users WHERE id = ?", id)
-	return err
+	// Use GORM's Delete method
+	return database.DB.Where("id = ?", id).Delete(&models.User{}).Error
 }

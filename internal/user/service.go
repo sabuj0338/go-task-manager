@@ -3,6 +3,7 @@ package user
 import (
 	"errors"
 
+	auth_repo "github.com/sabuj0338/go-task-manager/internal/auth/repository"
 	"github.com/sabuj0338/go-task-manager/internal/models"
 	"github.com/sabuj0338/go-task-manager/internal/user/repository"
 	"github.com/sabuj0338/go-task-manager/internal/utils"
@@ -29,17 +30,28 @@ func CreateNewUser(dto CreateUserDTO) error {
 		return errors.New("user already exists")
 	}
 
+	// Find the default "user" role. Admins might want to assign other roles,
+	// so the DTO should ideally contain role information in the future.
+	// For now, we'll assign the 'user' role by default.
+	userRole, err := auth_repo.GetRoleByName("user")
+	if err != nil {
+		return errors.New("default user role not found")
+	}
+
 	hashed, _ := utils.HashPassword(dto.Password)
 
 	user := &models.User{
-		Name:     dto.Name,
-		Email:    dto.Email,
-		Password: hashed,
-		Role:     "user",
-		Verified: false,
+		Name:          dto.Name,
+		Email:         dto.Email,
+		Password:      hashed,
+		EmailVerified: false, // Users created by an admin are not verified by default
 	}
 
-	return repository.CreateUser(user)
+	if err := repository.CreateUser(user); err != nil {
+		return err
+	}
+	// Assign the role to the newly created user.
+	return auth_repo.AssignRoleToUser(user.ID, userRole.ID)
 }
 
 func UpdateUserById(id int, dto UpdateUserDTO) error {
