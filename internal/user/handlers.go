@@ -42,23 +42,28 @@ func strongPasswordValidation(fl validator.FieldLevel) bool {
 }
 
 func GetUsers(c *fiber.Ctx) error {
-	users, err := GetAllUsers()
+	// Parse pagination query parameters, providing sensible defaults.
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+
+	users, meta, err := GetAllUsers(page, limit)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to get users", err.Error())
 	}
-	return c.JSON(users)
+	return response.SuccessWithMeta(c, fiber.StatusOK, "Users retrieved", users, meta)
 }
 
 func GetUser(c *fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid user id"})
+		return response.Error(c, fiber.StatusBadRequest, "Invalid user id")
 	}
 	user, err := GetUserByID(id)
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+		return response.Error(c, fiber.StatusNotFound, "User not found", err.Error())
 	}
-	return c.JSON(user)
+
+	return response.Success(c, fiber.StatusOK, "User retrieved", user)
 }
 
 func CreateUser(c *fiber.Ctx) error {

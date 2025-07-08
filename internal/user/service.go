@@ -2,15 +2,41 @@ package user
 
 import (
 	"errors"
+	"math"
 
 	auth_repo "github.com/sabuj0338/go-task-manager/internal/auth/repository"
 	"github.com/sabuj0338/go-task-manager/internal/models"
 	"github.com/sabuj0338/go-task-manager/internal/user/repository"
 	"github.com/sabuj0338/go-task-manager/internal/utils"
+	"github.com/sabuj0338/go-task-manager/pkg/response"
 )
 
-func GetAllUsers() (interface{}, error) {
-	return repository.FindAll()
+func GetAllUsers(page, limit int) ([]models.User, *response.PaginationMeta, error) {
+	// return repository.FindAll()
+	// Set default values for pagination if they are not provided
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 10 // A sensible default limit
+	}
+
+	// Calculate offset for the database query
+	offset := (page - 1) * limit
+
+	users, total, err := repository.FindAll(limit, offset)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	meta := &response.PaginationMeta{
+		TotalItems:   total,
+		TotalPages:   int(math.Ceil(float64(total) / float64(limit))),
+		CurrentPage:  page,
+		ItemsPerPage: limit,
+	}
+
+	return users, meta, nil
 }
 
 func GetUserByID(id int) (interface{}, error) {

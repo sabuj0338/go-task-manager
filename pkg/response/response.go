@@ -9,12 +9,21 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// PaginationMeta holds pagination metadata.
+type PaginationMeta struct {
+	TotalItems   int64 `json:"total_items"`
+	TotalPages   int   `json:"total_pages"`
+	CurrentPage  int   `json:"current_page"`
+	ItemsPerPage int   `json:"items_per_page"`
+}
+
 // APIResponse is the common structure for all API responses.
 type APIResponse struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-	Errors  interface{} `json:"errors,omitempty"`
+	Success bool            `json:"success"`
+	Message string          `json:"message"`
+	Data    interface{}     `json:"data,omitempty"`
+	Meta    *PaginationMeta `json:"meta,omitempty"`
+	Errors  interface{}     `json:"errors,omitempty"`
 }
 
 // ValidationError defines the structure for a single validation error.
@@ -29,6 +38,16 @@ func Success(c *fiber.Ctx, statusCode int, message string, data interface{}) err
 		Success: true,
 		Message: message,
 		Data:    data,
+	})
+}
+
+// SuccessWithMeta sends a standardized success response with pagination metadata.
+func SuccessWithMeta(c *fiber.Ctx, statusCode int, message string, data interface{}, meta *PaginationMeta) error {
+	return c.Status(statusCode).JSON(APIResponse{
+		Success: true,
+		Message: message,
+		Data:    data,
+		Meta:    meta,
 	})
 }
 

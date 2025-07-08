@@ -5,11 +5,24 @@ import (
 	"github.com/sabuj0338/go-task-manager/pkg/database"
 )
 
-func FindAll() ([]models.User, error) {
+func FindAll(limit, offset int) ([]models.User, int64, error) {
 	var users []models.User
-	// Use GORM to find all users and preload their roles
-	err := database.DB.Preload("Roles").Find(&users).Error
-	return users, err
+	var total int64
+
+	// Create a base query for the user's users
+	db := database.DB.Model(&models.User{})
+
+	// Count total records
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get the paginated results
+	if err := db.Limit(limit).Offset(offset).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return users, total, nil
 }
 
 func FindById(id int) (*models.User, error) {

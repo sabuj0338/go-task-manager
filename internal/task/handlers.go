@@ -25,13 +25,19 @@ func CreateTaskHandler(c *fiber.Ctx) error {
 	return response.Success(c, fiber.StatusCreated, "Task created", nil)
 }
 
+// GetTasksHandler retrieves a paginated list of tasks.
 func GetTasksHandler(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(uint)
-	tasks, err := GetAll(userID)
+
+	// Parse pagination query parameters, providing sensible defaults.
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+
+	tasks, meta, err := GetAll(userID, page, limit)
 	if err != nil {
 		return response.Error(c, fiber.StatusInternalServerError, "Failed to get tasks", err.Error())
 	}
-	return response.Success(c, fiber.StatusOK, "Tasks retrieved", tasks)
+	return response.SuccessWithMeta(c, fiber.StatusOK, "Tasks retrieved", tasks, meta)
 }
 
 func GetTaskHandler(c *fiber.Ctx) error {
