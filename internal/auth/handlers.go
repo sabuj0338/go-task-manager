@@ -318,7 +318,10 @@ func VerifyMFACodeHandler(c *fiber.Ctx) error {
 			Expires:  time.Now().Add(7 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   true,
-			SameSite: "Strict",
+			// SameSite: "Strict",
+			// Use "None" for cross-domain contexts.
+			// The "Secure" attribute must be true.
+			SameSite: "None",
 		})
 	}
 
