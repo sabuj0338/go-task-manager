@@ -33,7 +33,11 @@ func GetTasksHandler(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 
-	tasks, meta, err := GetAll(userID, page, limit)
+	// Parse search query, title
+	title := c.Query("title")
+	sort := c.Query("sort")
+
+	tasks, meta, err := GetAll(userID, page, limit, title, sort)
 	if err != nil {
 		return response.Error(c, fiber.StatusInternalServerError, "Failed to get tasks", err.Error())
 	}

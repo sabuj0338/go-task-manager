@@ -9,12 +9,13 @@ func CreateTask(task *models.Task) error {
 	return database.DB.Create(task).Error
 }
 
-func GetTasks(userID uint, limit, offset int) ([]models.Task, int64, error) {
+func GetTasks(userID uint, limit int, offset int, title string, sortBy string) ([]models.Task, int64, error) {
 	var tasks []models.Task
 	var total int64
 
 	// Create a base query for the user's tasks
-	db := database.DB.Model(&models.Task{}).Where("user_id = ?", userID)
+	// db := database.DB.Model(&models.Task{}).Where("user_id = ?", userID)
+	db := database.DB.Model(&models.Task{}).Where("user_id = ?", userID).Where("title LIKE ?", "%"+title+"%")
 
 	// Count total records
 	if err := db.Count(&total).Error; err != nil {
@@ -22,7 +23,7 @@ func GetTasks(userID uint, limit, offset int) ([]models.Task, int64, error) {
 	}
 
 	// Get the paginated results
-	if err := db.Limit(limit).Offset(offset).Find(&tasks).Error; err != nil {
+	if err := db.Order(sortBy).Limit(limit).Offset(offset).Find(&tasks).Error; err != nil {
 		return nil, 0, err
 	}
 

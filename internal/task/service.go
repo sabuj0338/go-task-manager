@@ -19,7 +19,7 @@ func Create(userID uint, dto CreateTaskDTO) error {
 }
 
 // GetAll retrieves a paginated list of tasks for a user.
-func GetAll(userID uint, page, limit int) ([]models.Task, *response.PaginationMeta, error) {
+func GetAll(userID uint, page int, limit int, title string, sort string) ([]models.Task, *response.PaginationMeta, error) {
 	// Set default values for pagination if they are not provided
 	if page <= 0 {
 		page = 1
@@ -31,7 +31,28 @@ func GetAll(userID uint, page, limit int) ([]models.Task, *response.PaginationMe
 	// Calculate offset for the database query
 	offset := (page - 1) * limit
 
-	tasks, total, err := repository.GetTasks(userID, limit, offset)
+	var sortBy = "created_at DESC"
+
+	switch sort {
+	case "title":
+		sortBy = "title ASC"
+	case "-title":
+		sortBy = "title DESC"
+	case "description":
+		sortBy = "description ASC"
+	case "-description":
+		sortBy = "description DESC"
+	case "completed":
+		sortBy = "completed ASC"
+	case "-completed":
+		sortBy = "completed DESC"
+	case "created_at":
+		sortBy = "created_at ASC"
+	case "-created_at":
+		sortBy = "created_at DESC"
+	}
+
+	tasks, total, err := repository.GetTasks(userID, limit, offset, title, sortBy)
 	if err != nil {
 		return nil, nil, err
 	}
